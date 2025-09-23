@@ -5,15 +5,24 @@ import sys
 import argparse
 from ruijie_crypt import *
 from io import TextIOWrapper
+from Crypto.Cipher import DES
+from Crypto.Util.Padding import pad
+import base64
 
-sys.stdout = sys.__stderr__
-
-enc_choices = ["A", "D", "B", "C", "E", "F", "v2-2023", "v1-2021"]
+enc_choices = ["B", "C", "E", "F", "v2-2023", "v1-2021"]
 dec_choices = ["B", "C", "E", "F", "v2-2023", "v1-2021"]
 sum_choices = ["A", "D"]
 
 HEADER_V2_2023 = b"upgrade_crypt_v2!@2023\n"
 HEADER_V1_2021 = b"upgrade_crypt_v1!@2021"
+
+def s_open(path, mode) -> TextIOWrapper:
+    if path == "stdin" or path == "-":
+        return os.fdopen(0, mode)
+    elif path == "stdout":
+        return os.fdopen(1, mode)
+    else:
+        return open(path, mode)
 
 def fw_2021_crypt(data_input: bytes) -> bytes:
 
@@ -85,13 +94,73 @@ def fw_2021_crypt(data_input: bytes) -> bytes:
     return output_stream
 '''
 
-def s_open(path, mode) -> TextIOWrapper:
-    if path == "stdin" or path == "-":
-        return os.fdopen(0, mode)
-    elif path == "stdout":
-        return os.fdopen(1, mode)
-    else:
-        return open(path, mode)
+def root_password_sum(serial_number: str) -> str:
+    # 盐
+    SALT1 = b'\xA2\xAA\x1F\xF6\xE9\xF4\x45\x0F\xF0\xEE\x32\xBB\x47\x62\xA5\xD4'
+    SALT2 = b'\x32\x03\x08\x51\x73\x56\x77\x91\xE1\x6F\xA2\x5B\x4C\xC2\xD5\x7D'
+    #将输入字符串转换为字节
+    input_bytes = serial_number.encode('utf-8')
+    
+    #SALT1 + input + SALT2
+    buffer = bytearray()
+    buffer.extend(SALT1)
+    buffer.extend(input_bytes)
+    buffer.extend(SALT2)
+    
+    #计算 MD5 哈希
+    md5_hash = hashlib.md5(buffer).digest()
+    
+    #转换为十六进制字符串
+    hex_digest = md5_hash.hex()
+    
+    return hex_digest[:16]
+
+def eweb_password_sum(serial_number: str) -> str:
+    def des_cbc_encrypt(plaintext: str, key: bytes, iv: bytes) -> bytes:
+        cipher = DES.new(key, DES.MODE_CBC, iv)
+        padded_data = pad(plaintext.encode('utf-8'), DES.block_size)
+        return cipher.encrypt(padded_data)
+    def char_to_digit(c: str) -> str:
+        ord_c = ord(c)
+        if c.isdigit():
+            return c
+        elif c in ('+', '='):
+            return '0'
+        elif 0x41 <= ord_c <= 0x45:  # A-E
+            return '0'
+        elif 0x46 <= ord_c <= 0x4A:  # F-J
+            return '1'
+        elif 0x4B <= ord_c <= 0x4F:  # K-O
+            return '2'
+        elif 0x50 <= ord_c <= 0x54:  # P-T
+            return '3'
+        elif 0x55 <= ord_c <= 0x5A:  # U-Z
+            return '4'
+        elif 0x61 <= ord_c <= 0x65:  # a-e
+            return '5'
+        elif 0x66 <= ord_c <= 0x6A:  # f-j
+            return '6'
+        elif 0x6B <= ord_c <= 0x6F:  # k-o
+            return '7'
+        elif 0x70 <= ord_c <= 0x74:  # p-t
+            return '8'
+        elif 0x75 <= ord_c <= 0x7A:  # u-z
+            return '9'
+        else:
+            return '0'
+    key = b'ReyeeEhr'
+    iv = b'ReyeeEhr'
+    ciphertext = des_cbc_encrypt(serial_number, key, iv)
+    b64_str = base64.b64encode(ciphertext).decode('utf-8').replace('\n', '')
+
+    # 从索引14截取6个字符
+    start_idx = 14
+    if len(b64_str) < start_idx + 6:
+        start_idx = max(0, len(b64_str) - 6)
+    segment = b64_str[start_idx : start_idx + 6]
+
+    pwd = ''.join([char_to_digit(c) for c in segment])
+    return f"Re{pwd.ljust(6, '0')[:6]}"
 
 def enc_process(args):
     in_file = args.input
@@ -176,6 +245,26 @@ def sum_process(args):
                 out_stream = rg_crypto_mode_D_encrypto(in_buf.read())
                 out_buf.write(out_stream)
 
+def root_process(args):
+    sys.stdout = sys.__stdout__
+    dev_sn = ""
+    if args.sn:
+        dev_sn = args.sn
+    else:
+        dev_sn = input("设备SN:")
+    password = root_password_sum(dev_sn)
+    print(f"root 密码: {password}")
+
+def eweb_process(args):
+    sys.stdout = sys.__stdout__
+    dev_sn = ""
+    if args.sn:
+        dev_sn = args.sn
+    else:
+        dev_sn = input("设备SN:")
+    eweb_password = eweb_password_sum(dev_sn)
+    print(f"EWEB 密码: {eweb_password}")
+
 def main():
     parser = argparse.ArgumentParser(description="加解密锐捷漏油器升级文件v2")
 
@@ -196,13 +285,24 @@ def main():
     sum_parsers.add_argument("-i", "--input", "-in",  required=False, help="输入 default:stdin", default="stdin")
     sum_parsers.add_argument("-o", "--output", "-out", required=False, help="输出 default:stdout", default="stdout")
 
+    root_parsers = subparsers.add_parser('root', help='计算root密码')
+    root_parsers.add_argument("-sn",  required=False, help="设备SN")
+
+    eweb_parsers = subparsers.add_parser('eweb', help='计算eweb密码')
+    eweb_parsers.add_argument("-sn",  required=False, help="设备SN")
+
     args = parser.parse_args()
+    sys.stdout = sys.__stderr__
+
     if args.subcommand == 'enc':
         enc_process(args)
     elif args.subcommand == 'dec':
         dec_process(args)
     elif args.subcommand == 'sum':
         sum_process(args)
-
+    elif args.subcommand == 'root':
+        root_process(args)
+    elif args.subcommand == 'eweb':
+        eweb_process(args)
 if __name__ == "__main__":
     main()
