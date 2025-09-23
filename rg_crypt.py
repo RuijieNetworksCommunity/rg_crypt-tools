@@ -16,6 +16,43 @@ HEADER_V2_2023 = b"upgrade_crypt_v2!@2023\n"
 HEADER_V1_2021 = b"upgrade_crypt_v1!@2021"
 
 def fw_2021_crypt(data_input: bytes) -> bytes:
+
+    data_size = len(data_input)
+    output_stream = bytearray(data_size)
+    keys = [232, 116, 250, 253, 126, 255, 127]
+    dec_cnt = 0
+    for i in keys:
+        output_stream[dec_cnt] = data_input[dec_cnt] ^ i
+        dec_cnt += 1
+    while dec_cnt < data_size:
+        output_stream[dec_cnt] = data_input[dec_cnt] ^ 127
+        dec_cnt += 1
+    
+    return bytes(output_stream)
+
+'''
+def fw_2021_crypt(data_input: bytes) -> bytes:
+    BUFFER_SIZE = 0x1000  # 4KB
+    state = [0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00]
+
+    data_size = len(data_input)
+    output = bytearray(data_size)
+    for i in range(data_size):
+        feedback = (state[0] + state[4] + state[5] + state[6]) & 1
+
+        state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7] = (
+        state[1], state[2], state[3], state[4], state[5], state[6], state[6], feedback
+        )
+
+        key = (
+            ((state[0] & 1) << 0) | ((state[1] & 1) << 1) | ((state[2] & 1) << 2) | ((state[3] & 1) << 3) |
+            ((state[4] & 1) << 4) | ((state[5] & 1) << 5) | ((state[6] & 1 )<< 6) | ((state[7] & 1) << 7)
+        )
+        output[i] = data_input[i] ^ key
+    return bytes(output)
+
+
+def fw_2021_crypt(data_input: bytes) -> bytes:
     BUFFER_SIZE = 0x1000  # 4KB
     state = [0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00]
     
@@ -46,6 +83,7 @@ def fw_2021_crypt(data_input: bytes) -> bytes:
         output_stream += output_chunk
         data_size -= read_size
     return output_stream
+'''
 
 def s_open(path, mode) -> TextIOWrapper:
     if path == "stdin" or path == "-":
