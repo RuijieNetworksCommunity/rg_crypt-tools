@@ -124,7 +124,7 @@ def EVP_BytesToKey(
     
     return key, iv
 
-def custom_pad(data, block_size=16, padding_char='\n'):
+def custom_pad(data, block_size=16, padding_char=b'\x0c'):
     """
     使用自定义字符（默认为换行符）进行填充
     
@@ -148,13 +148,13 @@ def custom_pad(data, block_size=16, padding_char='\n'):
         padding_length = block_size
     
     # 创建填充字节序列
-    padding = padding_char.encode() * padding_length
+    padding = padding_char * padding_length
     
     # 返回填充后的数据
     return data + padding
 
-def custom_unpad(data, padding_char='\n'):
-    padding_char_byte = padding_char.encode()
+def custom_unpad(data, padding_char=b'\x0c'):
+    padding_char_byte = padding_char
     # 从末尾开始找到第一个非填充字符
     i = len(data) - 1
     while i >= 0 and data[i] == padding_char_byte[0]:
@@ -187,15 +187,15 @@ def write_salt_to_data(data_input: bytes, salt: bytes):
 
 def base64_decode(input) -> bytes:
     if(type(input)==bytes):
-        return base64.decodebytes(input)
+        return base64.b64decode(input)
     elif(type(input)==str):
-        return base64.decodebytes(input.encode("utf-8"))
+        return base64.b64decode(input.encode("utf-8"))
 
 def base64_encode(input) -> bytes:
     if(type(input)==bytes):
-        return base64.encodebytes(input)
+        return base64.b64encode(input)
     elif(type(input)==str):
-        return base64.encodebytes(input.encode("utf-8"))
+        return base64.b64encode(input.encode("utf-8"))
 
 def read_encrypted_data_from_data(input_data: bytes) -> bytes:
     '''

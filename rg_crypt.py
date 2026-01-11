@@ -9,8 +9,8 @@ from Crypto.Cipher import DES
 from Crypto.Util.Padding import pad
 import base64
 
-enc_choices = ["B", "C", "E", "F", "v2-2023", "v1-2021"]
-dec_choices = ["B", "C", "E", "F", "v2-2023", "v1-2021"]
+enc_choices = ["B", "C", "E", "F", "v2-2023", "v1-2021", "test"]
+dec_choices = ["B", "C", "E", "F", "v2-2023", "v1-2021", "test"]
 sum_choices = ["A", "D"]
 
 HEADER_V2_2023 = b"upgrade_crypt_v2!@2023\n"
@@ -23,7 +23,45 @@ def s_open(path, mode) -> TextIOWrapper:
         return os.fdopen(1, mode)
     else:
         return open(path, mode)
+'''
+def fw_2021_crypt(data_input: bytes) -> bytes:
+    import numpy as np
+    data_size = len(data_input)
+    
+    # 将数据转换为 numpy 数组，这样可以进行矢量化操作
+    data_array = np.frombuffer(data_input, dtype=np.uint8)
+    
+    # 定义 keys，注意这里会重复填充，直到数据长度
+    keys = np.array([232, 116, 250, 253, 126, 255, 127], dtype=np.uint8)
+    
+    # 使用 modulo 运算符来处理键值的重复（循环使用键）
+    key_stream = np.resize(keys, data_size)
+    
+    # 使用矢量化 XOR 操作
+    output_array = data_array ^ key_stream
+    
+    # 将结果转换回 bytes 类型
+    return output_array.tobytes()
+'''
+def fw_2021_crypt(data_input: bytes) -> bytes:
+    data_size = len(data_input)
+    output_stream = bytearray(data_size)
+    keys = [232, 116, 250, 253, 126, 255, 127]
+    
+    # 先处理前7个字节
+    for i in range(min(data_size, len(keys))):
+        output_stream[i] = data_input[i] ^ keys[i]
 
+    # 对其余字节使用127作为异或键
+    # for i in range(len(keys), data_size):
+    #     output_stream[i] = data_input[i] ^ 127
+    
+    if data_size > len(keys):
+        output_stream[len(keys):] = [b ^ 127 for b in data_input[len(keys):]]
+
+
+    return bytes(output_stream)
+'''
 def fw_2021_crypt(data_input: bytes) -> bytes:
 
     data_size = len(data_input)
@@ -38,7 +76,7 @@ def fw_2021_crypt(data_input: bytes) -> bytes:
         dec_cnt += 1
     
     return bytes(output_stream)
-
+'''
 '''
 def fw_2021_crypt(data_input: bytes) -> bytes:
     BUFFER_SIZE = 0x1000  # 4KB
@@ -229,6 +267,10 @@ def dec_process(args):
                     return
                 out_stream = fw_2021_crypt(in_buf.read())
                 out_buf.write(out_stream)
+            elif c_type == "test":
+                buf_all = in_buf.read()
+                print(buf_all[:len(HEADER_V2_2023)-1])
+                print(buf_all[len(HEADER_V2_2023):len(HEADER_V2_2023)-1+10])
                 pass
 
 def sum_process(args):
